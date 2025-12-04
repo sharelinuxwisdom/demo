@@ -1,0 +1,72 @@
+## **The Complete Flow - Visual Diagram:**
+```
+┌─────────────┐
+│   You       │  client.search_dashboards("cpu")
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────┐
+│  Python Client (GrafanaMCPClient)                       │
+│                                                          │
+│  1. search_dashboards("cpu")                            │
+│     ↓                                                    │
+│  2. call_tool("search_dashboards", {"query": "cpu"})   │
+│     ↓                                                    │
+│  3. send_request("tools/call", {...})                   │
+│     ↓                                                    │
+│  4. Build JSON-RPC payload:                             │
+│     {                                                    │
+│       "jsonrpc": "2.0",                                 │
+│       "id": 1234567890,                                 │
+│       "method": "tools/call",                           │
+│       "params": {                                       │
+│         "name": "search_dashboards",                    │
+│         "arguments": {"query": "cpu"}                   │
+│       }                                                  │
+│     }                                                    │
+└──────────────────┬──────────────────────────────────────┘
+                   │ HTTP POST
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│  MCP Server (http://localhost:8000)                     │
+│                                                          │
+│  1. Receives JSON-RPC request                           │
+│  2. Parses: method="tools/call"                         │
+│  3. Finds tool: "search_dashboards"                     │
+│  4. Calls Grafana API with arguments                    │
+│  5. Gets dashboards from Grafana                        │
+│  6. Formats response as JSON-RPC                        │
+└──────────────────┬──────────────────────────────────────┘
+                   │ HTTP Response (202 Accepted)
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│  SSE Stream (Server-Sent Events)                        │
+│                                                          │
+│  event: message                                         │
+│  data: {                                                │
+│    "jsonrpc": "2.0",                                    │
+│    "id": 1234567890,                                    │
+│    "result": {                                          │
+│      "content": [{                                      │
+│        "type": "text",                                  │
+│        "text": "[{...dashboard data...}]"              │
+│      }]                                                 │
+│    }                                                    │
+│  }                                                       │
+└──────────────────┬──────────────────────────────────────┘
+                   │ SSE listener catches response
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│  Python Client - Response Handler                       │
+│                                                          │
+│  1. SSE listener receives message                       │
+│  2. Matches response ID (1234567890) to request         │
+│  3. Stores in self.responses[1234567890]               │
+│  4. send_request() wakes up from waiting               │
+│  5. Returns response to you                             │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────┐
+│   You       │  result = [{dashboard data}]
+└─────────────┘
